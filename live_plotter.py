@@ -18,13 +18,23 @@ signal.signal(signal.SIGINT, interrupt_handler)
 ser = serial.Serial("/dev/ttyACM0", 115200, timeout=1)
 print("using port", ser.name, "@", ser.baudrate)
 
-fig = plt.figure()
-ax = fig.add_subplot(1, 1, 1, projection='3d')
-
 yaw0 = 0
 yawPI = 0
 pitch0 = 0
 pitchPI_2 = 0
+
+past_axes = []
+past_values = [[], [], []]
+
+num_combined = 6
+
+fig = plt.figure()
+ax3d = fig.add_subplot(num_combined + len(past_values),
+                       1, (1, num_combined), projection='3d')
+
+for i in range(len(past_values)):
+    past_axes.append(fig.add_subplot(
+        num_combined + len(past_values), 1, num_combined+1+i))
 
 
 def calibrate(ser, start, prompt):
@@ -64,33 +74,46 @@ def live_show(i, ser):
         # print("[rec]", data)
 
         if data.startswith("BASE"):
-            yaw = math.pi * (int(data[4:]) - yaw0) / (yawPI - yaw0)
+            raw = int(data[4:])
+            past_values[0].append(raw)
+            yaw = math.pi * (raw - yaw0) / (yawPI - yaw0)
             read[0] = True
 
         if data.startswith("LOWER"):
+            raw = int(data[5:])
+            past_values[1].append(raw)
             lower_pitch = 0.5 * math.pi * \
-                (int(data[5:]) - pitch0) / (pitchPI_2 - pitch0)
+                (raw - pitch0) / (pitchPI_2 - pitch0)
             read[1] = True
 
-    ser.read_all()
+    ser.reset_input_buffer()
 
     distance = lower_length * math.cos(lower_pitch)
     elbow = (base[0] + distance * math.cos(yaw), base[1] + distance *
              math.sin(yaw), base[2] + lower_length * math.sin(lower_pitch))
-    
-    print("pitch", math.degrees(lower_pitch))
-    print("yaw", math.degrees(yaw))
-    
+
+    if i % 10 == 0:
+        print(f"(t0, t1): {math.degrees(lower_pitch)} {math.degrees(yaw)}")
+
     xs = [base[0], elbow[0]]
     ys = [base[1], elbow[1]]
     zs = [base[2], elbow[2]]
 
-    ax.clear()
-    ax.plot3D(xs, ys, zs)
+    ax3d.clear()
+    ax3d.plot3D(xs, ys, zs)
 
-    ax.set_xlim3d(-20, 20)
-    ax.set_ylim3d(-20, 20)
-    ax.set_zlim3d(0, 30)
+    for i in range(len(past_values)):
+        past_values[i] = past_values[i][-50:]
+        past_axes[i].clear()
+        past_axes[i].plot(past_values[i])
+        try:
+            past_axes[i].set_ybound(0, 1.1 * max(past_values[i]))
+        except:
+            pass
+
+    ax3d.set_xlim3d(-20, 20)
+    ax3d.set_ylim3d(-20, 20)
+    ax3d.set_zlim3d(0, 30)
 
 
 setup_stops(ser)
