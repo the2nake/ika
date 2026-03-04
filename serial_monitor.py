@@ -18,6 +18,4 @@ while True:
     if not data:
         continue
     print("[rec]", data)
-
-    if len(data) > 3 and data[:3] == "IMU":
-        print("imu data:", data[3:])
+    
