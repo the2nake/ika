@@ -1,15 +1,17 @@
 import sys
 import serial
 import signal
+from mpl_toolkits.mplot3d import Axes3D
 import matplotlib.pyplot as plt
 import matplotlib.animation as animate
 import math
 import time
+from typing import cast
 
 
 base = (0, 0, 63)
 lower_length = 367
-upper_length = 363
+upper_length = 363 + 20
 
 
 def interrupt_handler(signal, frame):
@@ -38,8 +40,8 @@ traces = [{"x": [], "y": [], "z": []}]
 num_combined = 6
 
 fig = plt.figure()
-ax3d = fig.add_subplot(num_combined + len(past_values),
-                       1, (1, num_combined), projection='3d')
+ax3d = cast(Axes3D, fig.add_subplot(num_combined + len(past_values),
+                                    1, (1, num_combined), projection='3d'))
 
 for i in range(len(past_values)):
     past_axes.append(fig.add_subplot(
@@ -54,7 +56,7 @@ def calibrate(ser, start, prompt):
     return int(str_in.split(start)[-1].split()[0])
 
 
-def setup_stops(ser, delay=0):
+def setup_stops(ser):
     global yaw0, yawPI, pitch0_0, pitch0_PI_2, pitch1_0, pitch1_PI_2
 
     yaw0 = calibrate(ser, "BASE", "rotate to yaw= 0")
@@ -152,6 +154,7 @@ def live_show(i, ser):
     ax3d.set_xlim3d(-500, 500)
     ax3d.set_ylim3d(0, 500)
     ax3d.set_zlim3d(0, 300)
+    return []
 
 
 setup_stops(ser)
