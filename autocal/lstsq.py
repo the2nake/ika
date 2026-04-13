@@ -1,4 +1,4 @@
-from autocal.angle_tune import setup, get_raws
+from .angle_tune import setup, get_raws
 
 import serial
 import math
@@ -6,7 +6,9 @@ import math
 import numpy as np
 
 
-def raw_to_rad(raw: int, raw_ends: tuple[int, int], rad_ends: tuple[float, float]):
+def raw_to_rad(
+        raw: int, raw_ends: tuple[int, int],
+        rad_ends: tuple[float, float]):
     innov = (raw - raw_ends[0]) / (raw_ends[1] - raw_ends[0])
     return rad_ends[0] + innov * (rad_ends[1] - rad_ends[0])
 
@@ -58,9 +60,12 @@ def calibrate_lengths(ser: serial.Serial, coeffs: tup_float_6,
         print(f"calibration impossible, at least {min_points} points needed")
         return None
 
+    best_params = np.array([])
+    best_residuals = -1
+    best_angle = 0
+
     A = np.zeros((3 * len(points), 5))
     b = np.zeros((3 * len(points), 1))
-
     for i, point in enumerate(points):
         input(f"move the tip to position {point}")
         azim, elev, elbow = (coeffs[2*j] * raw + coeffs[2*j+1]
@@ -71,23 +76,54 @@ def calibrate_lengths(ser: serial.Serial, coeffs: tup_float_6,
         A[3*i] = [nx1, nx2, 1, 0, 0]
         A[3*i+1] = [ny1, ny2, 0, 1, 0]
         A[3*i+2] = [nz1, nz2, 0, 0, 1]
-        b[3*i] = point[0]
-        b[3*i+1] = point[1]
-        b[3*i+2] = point[2]
 
-    res = np.linalg.lstsq(A, b)[0].transpose()[0]
+    for angle in range(360):
+        for i, point in enumerate(points):
+            b[3*i] = math.cos(math.radians(angle)) * point[0] \
+                - math.sin(math.radians(angle)) * point[1]
+            b[3*i+1] = math.sin(math.radians(angle)) * point[0] \
+                + math.cos(math.radians(angle)) * point[1]
+            b[3*i+2] = point[2]
+
+        least_squares = np.linalg.lstsq(A, b)
+        params, residuals = least_squares[0], least_squares[1]
+        if best_residuals == -1 or residuals.max() < best_residuals:
+            best_residuals = residuals.max()
+            best_params = params
+            best_angle = math.radians(angle)
 
     # ! problem: base needs to be aligned with world axes
 
     if not silent:
-        # ref = A @ np.array([[367.0], [340.0], [0.0], [-170.0], [20.0]]) 
+        # ref = A @ np.array([[367.0], [340.0], [0.0], [-170.0], [20.0]])
         # calib = A @ res
         # print("  reference", ref)
         # print("calibration", calib)
         # print(np.concat((ref, calib), axis=1))
-        print("joint lengths", res[:2])
-        print("base position", res[2:])
-    return res
+        print("residuals", best_residuals)
+        print("joint lengths", best_params[:2])
+        print("base position", best_params[2:])
+        print("base angle", best_angle)
+    return best_params, best_angle
+
+
+def get_point(
+        ser: serial.Serial, coeffs: tup_float_6, best_params: np.ndarray,
+        base_angle: float):
+    elbow_offset = math.radians(182)
+    azim, elev, elbow = (coeffs[2*j] * raw + coeffs[2*j+1]
+                         for j, raw in enumerate(get_raws(ser)))
+    nx1, ny1, nz1 = compute_vec3(azim, elev)
+    nx2, ny2, nz2 = compute_vec3(azim, elev + elbow + elbow_offset)
+
+    A = np.zeros((3, 5))
+    A[0] = [nx1, nx2, 1, 0, 0]
+    A[1] = [ny1, ny2, 0, 1, 0]
+    A[2] = [nz1, nz2, 0, 0, 1]
+
+    b = A @ best_params
+
+    return [int((math.cos(base_angle) * b[0] + math.sin(base_angle) * b[1])[0]), int((-math.sin(base_angle) * b[0] + math.cos(base_angle) * b[1])[0]), int(abs(b[2][0]))] # TODO! figure out why i need the absolute value thing??
 
 
 if __name__ == "__main__":
