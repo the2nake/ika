@@ -33,9 +33,10 @@ if __name__ == "__main__":
     while True:
         target = get_point(ser, coeffs, best_params, base_angle)
         print(target)
-
-        j1, j2, j3, j4, j5 = ika.ik.get_joints_to(
-            target[0], target[1], target[2])
+        try:
+            j1, j2, j3, j4, j5 = ika.ik.get_joints_to(target[0], target[1], target[2])
+        except:
+            pass
         ser2.write(f"{j1},{j2},{j3},{j4},{j5}%".encode())
         # ser2.flush()
         time.sleep(0.01)
