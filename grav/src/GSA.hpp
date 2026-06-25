@@ -62,4 +62,9 @@ class GSA {
 
   std::vector<Vec> m_x;  // positions
   std::vector<Vec> m_v;  // velocities
+
+  std::vector<double> fitnesses;
+  std::vector<double> masses;
+  std::vector<std::pair<double, int>> indexed_fitnesses;
+  std::vector<Vec> accels;
 };

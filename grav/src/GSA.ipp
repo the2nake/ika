@@ -1,4 +1,5 @@
 
+#include <Eigen/Core>
 #include <Eigen/Dense>
 #include <algorithm>
 #include <cassert>
@@ -12,8 +13,15 @@ using namespace std;
 
 template <typename Vec, Evaluator<Vec> Eval>
   requires std::convertible_to<Vec, Eigen::VectorXd>
-GSA<Vec, Eval>::GSA(const vector<Vec>& guesses, Eval err, std::mt19937 &rand)
-    : m_eval(std::move(err)), m_x(guesses), m_v(guesses.size()), m_rand(rand) {
+GSA<Vec, Eval>::GSA(const vector<Vec>& guesses, Eval err, std::mt19937& rand)
+    : m_eval(std::move(err)),
+      m_x(guesses),
+      m_v(guesses.size()),
+      fitnesses(guesses.size()),
+      masses(guesses.size()),
+      indexed_fitnesses(guesses.size()),
+      accels(guesses.size()),
+      m_rand(rand) {
   if (guesses.size() < kb) {
     throw std::invalid_argument(
         std::format("not enough guesses, need at least {} (gsa)", kb));
@@ -36,7 +44,6 @@ template <typename Vec, Evaluator<Vec> Eval>
   requires std::convertible_to<Vec, Eigen::VectorXd>
 bool GSA<Vec, Eval>::step() {
   // calculate error
-  std::vector<double> fitnesses(m_x.size());
   double best_fitness = -1, worst_fitness = -1;
   for (int i = 0; i < m_x.size(); ++i) {
     double fitness = m_eval(m_x[i]);
@@ -54,7 +61,6 @@ bool GSA<Vec, Eval>::step() {
 
   // compute non-normalised mass values
   double total = 0.0;
-  std::vector<double> masses(fitnesses.size());
   for (int i = 0; i < fitnesses.size(); ++i) {
     masses[i] = (fitnesses[i] - worst_fitness) / (best_fitness - worst_fitness);
     total += masses[i];
@@ -64,7 +70,6 @@ bool GSA<Vec, Eval>::step() {
   for (int i = 0; i < masses.size(); ++i) { masses[i] /= total; }
 
   // attract towards kb best scores
-  std::vector<std::pair<double, int>> indexed_fitnesses(fitnesses.size());
   for (int i = 0; i < fitnesses.size(); ++i) {
     indexed_fitnesses[i] = {fitnesses[i], i};
   }
@@ -73,7 +78,7 @@ bool GSA<Vec, Eval>::step() {
 
   // get gravitational constant
   const double G = G_i * std::exp(-beta * m_iter / (double)m_max_iters);
-  std::vector<Vec> accels(m_x.size());
+  std::fill(accels.begin(), accels.end(), Vec::Zero());
   std::uniform_real_distribution<> r(0, 1);
   for (int i = 0; i < m_x.size(); ++i) {
     for (int k = 0; k < kb; ++k) {
@@ -85,7 +90,10 @@ bool GSA<Vec, Eval>::step() {
   }
 
   // TODO: use verlet integration?
-  for (int i = 0; i < m_v.size(); ++i) { m_v[i] += accels[i]; m_x[i] += m_v[i]; }
+  for (int i = 0; i < m_v.size(); ++i) {
+    m_v[i] += accels[i];
+    m_x[i] += m_v[i];
+  }
 
   ++m_iter;
   return m_iter < m_max_iters;
